@@ -1,22 +1,18 @@
 import pandas as pd
 import pickle
 
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-from sklearn.svm import SVC
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
+from sklearn.svm import SVC
 
-# Load dataset
+# Load data
 df = pd.read_csv("train_u6lujuX_CVtuZ9i.csv")
 df.drop("Loan_ID", axis=1, inplace=True)
 
 X = df.drop("Loan_Status", axis=1)
 y = df["Loan_Status"]
-
-# SAVE FEATURE ORDER
-feature_order = X.columns.tolist()
-pickle.dump(feature_order, open("feature_order.pkl", "wb"))
 
 cat_cols = X.select_dtypes(include="object").columns
 num_cols = X.select_dtypes(exclude="object").columns
@@ -43,12 +39,11 @@ kernels = {
 }
 
 for kernel, fname in kernels.items():
-    model = SVC(kernel=kernel, probability=True)
     pipe = Pipeline([
         ("preprocessing", preprocessor),
-        ("model", model)
+        ("model", SVC(kernel=kernel, probability=True))
     ])
     pipe.fit(X, y)
     pickle.dump(pipe, open(fname, "wb"))
 
-print("✅ Models and feature order saved")
+print("✅ Models trained and saved")
