@@ -1,208 +1,183 @@
 import streamlit as st
-import pandas as pd
 import pickle
+import numpy as np
 import os
 
-# ==================================================
+# =====================================================
 # Page Configuration
-# ==================================================
+# =====================================================
 st.set_page_config(
-    page_title="Smart Loan Approval System",
+    page_title="Loan Risk Intelligence",
     layout="wide",
     page_icon="📊"
 )
 
-# ==================================================
-# Custom CSS (Original Dark FinTech UI)
-# ==================================================
-st.markdown("""
-<style>
-body { background-color:#0a1020; color:#e2e8f0; }
-.panel {
-    background:#020617;
-    border-radius:16px;
-    padding:20px;
-    border:1px solid #1e293b;
-    margin-bottom:20px;
-}
-.ribbon-ok {
-    background:linear-gradient(90deg,#14b8a6,#22d3ee);
-    padding:14px;
-    border-radius:12px;
-    font-weight:700;
-    text-align:center;
-}
-.ribbon-no {
-    background:linear-gradient(90deg,#ef4444,#f97316);
-    padding:14px;
-    border-radius:12px;
-    font-weight:700;
-    text-align:center;
-}
-.bar {
-    height:10px;
-    background:#1e293b;
-    border-radius:10px;
-    overflow:hidden;
-}
-.fill {
-    height:10px;
-    background:linear-gradient(90deg,#38bdf8,#14b8a6);
-}
-.small { color:#94a3b8; font-size:13px; }
-</style>
-""", unsafe_allow_html=True)
-
-# ==================================================
-# Sidebar – Model Selection
-# ==================================================
-st.sidebar.markdown("## ⚙️ Model Settings")
+# =====================================================
+# Sidebar – Model Settings
+# =====================================================
+st.sidebar.title("⚙️ Model Configuration")
 
 kernel = st.sidebar.radio(
     "Select SVM Kernel",
     ["Linear", "Polynomial", "RBF"]
 )
 
-st.sidebar.info("💡 RBF handles complex non-linear patterns best.")
+st.sidebar.caption("RBF handles complex non-linear credit patterns best.")
 
-# Model file paths (must exist in repo)
-model_files = {
+# =====================================================
+# Load Models & Feature Order
+# =====================================================
+MODEL_FILES = {
     "Linear": "svm_linear.pkl",
     "Polynomial": "svm_poly.pkl",
     "RBF": "svm_rbf.pkl"
 }
 
-model_path = model_files[kernel]
+FEATURE_ORDER_FILE = "feature_order.pkl"
 
+model_path = MODEL_FILES[kernel]
+
+# Safety checks
 if not os.path.exists(model_path):
-    st.error(f"❌ Model file not found: {model_path}")
+    st.error(f"❌ Missing model file: {model_path}")
     st.stop()
 
-# Load model
+if not os.path.exists(FEATURE_ORDER_FILE):
+    st.error("❌ Missing feature_order.pkl. Please re-run train.py.")
+    st.stop()
+
+# Load artifacts
 model = pickle.load(open(model_path, "rb"))
+feature_order = pickle.load(open(FEATURE_ORDER_FILE, "rb"))
 
-# ==================================================
-# Header
-# ==================================================
-st.markdown("### 📊 Smart Loan Approval System")
+# =====================================================
+# App Header
+# =====================================================
+st.markdown("## 📊 Loan Risk Intelligence")
 st.markdown(
-    "<p class='small'>AI-assisted credit screening dashboard</p>",
-    unsafe_allow_html=True
+    "AI-assisted credit risk evaluation using **Support Vector Machines (SVM)**."
 )
-st.markdown("<hr>", unsafe_allow_html=True)
+st.divider()
 
-# ==================================================
+# =====================================================
 # Input Section
-# ==================================================
-st.markdown("## 🔍 Applicant Information")
+# =====================================================
+st.subheader("🔍 Applicant Information")
 
-c1, c2 = st.columns(2)
-with c1:
-    income = st.number_input("Monthly Income ($)", min_value=0, value=4000)
-with c2:
-    loan_amount = st.number_input("Requested Loan ($K)", min_value=0, value=120)
+col1, col2 = st.columns(2)
+with col1:
+    income = st.number_input(
+        "Monthly Income",
+        min_value=0,
+        value=4000,
+        help="Applicant’s monthly income"
+    )
 
-c3, c4, c5 = st.columns(3)
-with c3:
-    credit = st.selectbox("Credit Record", ["Clean History", "Issues Present"])
-with c4:
-    employment = st.selectbox("Employment Type", ["Salaried", "Self-Employed"])
-with c5:
-    area = st.selectbox("Residence Area", ["Urban", "Semiurban", "Rural"])
+with col2:
+    loan_amount = st.number_input(
+        "Requested Loan Amount",
+        min_value=0,
+        value=120,
+        help="Loan amount requested"
+    )
 
-analyze = st.button("🔎 Evaluate Risk", use_container_width=True)
+col3, col4, col5 = st.columns(3)
+with col3:
+    credit = st.selectbox(
+        "Credit History",
+        ["Clean", "Issues"],
+        help="Past credit repayment behaviour"
+    )
 
-# ==================================================
-# Prediction Logic
-# ==================================================
-if analyze:
+with col4:
+    employment = st.selectbox(
+        "Employment Type",
+        ["Salaried", "Self-Employed"]
+    )
 
-    credit_val = 1.0 if credit == "Clean History" else 0.0
+with col5:
+    area = st.selectbox(
+        "Property Area",
+        ["Urban", "Semiurban", "Rural"]
+    )
 
-    # -------- Business Rule Guard --------
+st.divider()
+
+# =====================================================
+# Prediction Button
+# =====================================================
+predict_btn = st.button("🔎 Evaluate Loan Risk", use_container_width=True)
+
+# =====================================================
+# Prediction Logic (NUMPY-BASED)
+# =====================================================
+if predict_btn:
+
+    credit_val = 1.0 if credit == "Clean" else 0.0
+
+    # -------------------------------
+    # Business Rule Guard
+    # -------------------------------
     if credit_val == 0.0 and income < 2000:
         approved = False
         confidence = 95.0
     else:
-        # ---- dtype-safe input dataframe ----
-        input_df = pd.DataFrame([{
-            "Gender": str("Male"),
-            "Married": str("No"),
-            "Dependents": str("0"),
-            "Education": str("Graduate"),
-            "Self_Employed": str("Yes" if employment == "Self-Employed" else "No"),
+        # Build raw input record
+        record = {
+            "Gender": "Male",
+            "Married": "No",
+            "Dependents": "0",
+            "Education": "Graduate",
+            "Self_Employed": "Yes" if employment == "Self-Employed" else "No",
             "ApplicantIncome": float(income),
-            "CoapplicantIncome": float(0),
+            "CoapplicantIncome": 0.0,
             "LoanAmount": float(loan_amount),
-            "Loan_Amount_Term": float(360),
+            "Loan_Amount_Term": 360.0,
             "Credit_History": float(credit_val),
-            "Property_Area": str(area)
-        }])
+            "Property_Area": area
+        }
 
-        pred = model.predict(input_df)[0]
-        confidence = model.predict_proba(input_df).max() * 100
+        # Convert to NumPy array in TRAINING ORDER
+        X_np = np.array(
+            [[record[col] for col in feature_order]],
+            dtype=object
+        )
+
+        pred = model.predict(X_np)[0]
+        confidence = model.predict_proba(X_np).max() * 100
         approved = pred == "Y"
 
-    # ==================================================
+    # =================================================
     # Output Section
-    # ==================================================
-    st.markdown("## 📈 Risk Summary")
+    # =================================================
+    st.subheader("📈 Risk Assessment Result")
 
-    left, right = st.columns([1, 2])
+    colA, colB = st.columns([1, 2])
 
-    with left:
+    with colA:
         if approved:
-            st.markdown(
-                "<div class='ribbon-ok'>✔ APPROVED</div>",
-                unsafe_allow_html=True
-            )
+            st.success("✅ LOAN APPROVED")
         else:
-            st.markdown(
-                "<div class='ribbon-no'>✖ REJECTED</div>",
-                unsafe_allow_html=True
-            )
+            st.error("❌ LOAN REJECTED")
 
-        st.markdown(
-            f"<p class='small'>Kernel Used: {kernel}</p>",
-            unsafe_allow_html=True
+        st.caption(f"Kernel Used: **{kernel}**")
+
+    with colB:
+        st.metric(
+            label="Model Confidence",
+            value=f"{confidence:.1f}%"
         )
 
-    with right:
-        st.markdown(
-            "<p class='small'>Model Confidence</p>",
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            f"""
-            <div class="bar">
-                <div class="fill" style="width:{confidence}%;"></div>
-            </div>
-            <p class="small">{confidence:.1f}% certainty</p>
-            """,
-            unsafe_allow_html=True
-        )
-
-    # ==================================================
-    # Explanation Panel
-    # ==================================================
-    st.markdown(
-        f"""
-        <div class="panel">
-            <h4>🧠 Model Insight</h4>
-            <p>
-            Based on income stability, credit behavior, and residential profile,
-            the applicant is assessed as
-            <b>{"low risk" if approved else "high risk"}</b>.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.info(
+        f"🧠 **Model Insight:** Based on income stability, credit behaviour, "
+        f"and property profile, the applicant is assessed as "
+        f"**{'low risk' if approved else 'high risk'}**."
     )
 
-# ==================================================
+# =====================================================
 # Footer
-# ==================================================
-st.markdown(
-    "<hr><p class='small' style='text-align:center;'>ML supports decisions. Final approval follows policy rules.</p>",
-    unsafe_allow_html=True
+# =====================================================
+st.divider()
+st.caption(
+    "⚠️ This system assists decision-making. Final loan approval follows institutional policies."
 )

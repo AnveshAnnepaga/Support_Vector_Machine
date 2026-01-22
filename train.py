@@ -9,19 +9,18 @@ from sklearn.impute import SimpleImputer
 
 # Load dataset
 df = pd.read_csv("train_u6lujuX_CVtuZ9i.csv")
-
-# Drop ID column
 df.drop("Loan_ID", axis=1, inplace=True)
 
-# Features & target
 X = df.drop("Loan_Status", axis=1)
 y = df["Loan_Status"]
 
-# Column types
+# SAVE FEATURE ORDER
+feature_order = X.columns.tolist()
+pickle.dump(feature_order, open("feature_order.pkl", "wb"))
+
 cat_cols = X.select_dtypes(include="object").columns
 num_cols = X.select_dtypes(exclude="object").columns
 
-# Pipelines
 num_pipeline = Pipeline([
     ("imputer", SimpleImputer(strategy="median")),
     ("scaler", StandardScaler())
@@ -43,15 +42,13 @@ kernels = {
     "rbf": "svm_rbf.pkl"
 }
 
-for kernel, filename in kernels.items():
+for kernel, fname in kernels.items():
     model = SVC(kernel=kernel, probability=True)
-
-    pipeline = Pipeline([
+    pipe = Pipeline([
         ("preprocessing", preprocessor),
         ("model", model)
     ])
+    pipe.fit(X, y)
+    pickle.dump(pipe, open(fname, "wb"))
 
-    pipeline.fit(X, y)
-    pickle.dump(pipeline, open(filename, "wb"))
-
-    print(f"✅ {kernel.upper()} model saved as {filename}")
+print("✅ Models and feature order saved")
